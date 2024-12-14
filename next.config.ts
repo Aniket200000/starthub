@@ -3,14 +3,14 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
     /* config options here */
 
-    typescript:{
-        ignoreBuildErrors : true,
+    typescript: {
+        ignoreBuildErrors: true,
     },
-    eslint:{
-        ignoreDuringBuilds : true,
+    eslint: {
+        ignoreDuringBuilds: true,
     },
     images: {
-        dangerouslyAllowSVG:true,
+        dangerouslyAllowSVG: true,
         remotePatterns: [
             {
                 protocol: 'https',
@@ -18,13 +18,17 @@ const nextConfig: NextConfig = {
             }
         ]
     },
-
-
-    devIndicators : {
-        appIsrStatus : true,
-        buildActivity : true,
-        buildActivityPosition : "bottom-right"
+    devIndicators: {
+        appIsrStatus: true,
+        buildActivity: true,
+        buildActivityPosition: "bottom-right",
     },
 };
 
-export default nextConfig;
+// Import and wrap with the bundle analyzer
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
+
+// Combine the configs
+export default withBundleAnalyzer(nextConfig);
