@@ -1,52 +1,75 @@
 import NextAuth from "next-auth";
-import GitHub from "next-auth/providers/github";
+import GitHub, { GitHubProfile } from "next-auth/providers/github";
 import { AUTHOR_BY_GITHUB_ID_QUERY } from "@/sanity/lib/queries";
 import { client } from "@/sanity/lib/client";
 import { writeClient } from "@/sanity/lib/write-client";
+import type { Author } from "@/sanity/types"; // Ensure you have proper types for your Sanity schema
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [GitHub],
   callbacks: {
-    async signIn({
-      user: { name, email, image },
-      profile: { id, login, bio },
-    }) {
-      const existingUser = await client
-        .withConfig({ useCdn: false })
-        .fetch(AUTHOR_BY_GITHUB_ID_QUERY, {
-          id,
-        });
+    async signIn({ user, profile }) {
+      try {
+        const githubProfile = profile as unknown as GitHubProfile; // ✅ Use the declared type
+        const githubId = githubProfile.id.toString();
 
-      if (!existingUser) {
-        await writeClient.create({
-          _type: "author",
-          id,
-          name,
-          username: login,
-          email,
-          image,
-          bio: bio || "",
-        });
-      }
+        if (!user.email || !user.name) {
+          throw new Error("Missing required user information");
+        }
 
-      return true;
-    },
-    async jwt({ token, account, profile }) {
-      if (account && profile) {
-        const user = await client
+        const existingUser = await client
           .withConfig({ useCdn: false })
-          .fetch(AUTHOR_BY_GITHUB_ID_QUERY, {
-            id: profile?.id,
+          .fetch<Author | null>(AUTHOR_BY_GITHUB_ID_QUERY, {
+            id: githubId,
           });
 
-        token.id = user?._id;
-      }
+        if (!existingUser) {
+          await writeClient.create({
+            _type: "author",
+            id: githubId,
+            name: user.name,
+            username: githubProfile.login,
+            email: user.email,
+            image: user.image ?? "",
+            bio: githubProfile.bio || "",
+          });
+        }
 
+        return true;
+      } catch (error) {
+        console.error("SignIn error:", error);
+        return false;
+      }
+    },
+    async jwt({ token, profile }) {
+      try {
+        if (profile) {
+          const githubProfile = profile as unknown as GitHubProfile; // ✅ Use the declared type
+          const githubId = githubProfile.id.toString();
+
+          const user = await client
+            .withConfig({ useCdn: false })
+            .fetch<Author | null>(AUTHOR_BY_GITHUB_ID_QUERY, {
+              id: githubId,
+            });
+
+          if (user) {
+            token.id = user._id;
+          }
+        }
+      } catch (error) {
+        console.error("JWT error:", error);
+      }
       return token;
     },
     async session({ session, token }) {
-      Object.assign(session, { id: token.id });
-      return session;
+      return {
+        ...session,
+        user: {
+          ...session.user,
+          id: token.id,
+        },
+      };
     },
   },
 });
